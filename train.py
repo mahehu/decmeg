@@ -1,176 +1,188 @@
-# -*- coding: utf-8 -*-
+"""
+   DecMeg2014 2nd place submission code. 
 
-"""DecMeg2014 example code.
+   Heikki.Huttunen@tut.fi, Jul 29th, 2014
 
-  Simple prediction of the class labels of the test set by:
-- pooling all the triaining trials of all subjects in one dataset.
-- Extracting the MEG data in the first 500ms from when the
-  stimulus starts.
-- Using a linear classifier (logistic regression).
+   The model is a hierarchical combination of logistic regression and 
+   random forest. The first layer consists of a collection of 337 logistic 
+   regression classifiers, each using data either from a single sensor 
+   (31 features) or data from a single time point (306 features). The 
+   resulting probability estimates are fed to a 1000-tree random forest, 
+   which makes the final decision. 
+   
+   The model is wrapped into the LrCollection class.
+   The prediction is boosted in a semisupervised manner by
+   iterated training with the test samples and their predicted classes
+   only. This iteration is wrapped in the class IterativeTrainer.
+   
+   Requires sklearn, scipy and numpy packages.
+   
+===
+Copyright (c) 2014, Heikki Huttunen 
+Department of Signal Processing
+Tampere University of Technology
+Heikki.Huttunen@tut.fi
+
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the name of the Tampere University of Technology nor the
+      names of its contributors may be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
-# TODO: try to add filtering
-# - change number of blocks (now 40)
-# - change starting time (now 0.2 s)
-
-# TODO: try other classifiers: random forest, extratrees
+# Generic imports 
 
 import numpy as np
+from scipy.io import loadmat
+from scipy.signal import lfilter, decimate
 from sklearn.linear_model import LogisticRegression
-from sklearn.cross_validation import LeaveOneLabelOut
-from sklearn.cross_validation import cross_val_score
-from sklearn.ensemble import RandomForestClassifier,ExtraTreesClassifier
-from sklearn.naive_bayes import MultinomialNB
-from scipy.io import loadmat, savemat
-from scipy.signal import lfilter
+from sklearn.ensemble import RandomForestClassifier
+
 import time
 import sys
 import copy 
-import scipy
 import datetime 
 
 from LrCollection import LrCollection
 from IterativeTrainer import IterativeTrainer
 
-def mad(data, axis=None):
-    return np.mean(np.absolute(data - np.mean(data, axis)), axis)
-
-def polarCoordinates(X):
-    
-    Xp = np.zeros_like(X)
-
-    Xm = X[:, 2::3, :]
-    Xg = X[:, 0::3, :] + 1j * X[:, 1::3, :]
-
-    Xp[:, 2::3, :] = Xm
-    Xp[:, 0::3, :] = np.abs(Xg)
-    Xp[:, 1::3, :] = np.unwrap(np.angle(Xg))
-    
-    return Xp
-
-def loadData(filename, 
-             dsMode = "decimate", 
-             downSample = 8, 
+def loadData(filename,
+             downsample = 8, 
              start = 130, 
-             stop = 375, 
-             clipThr = None,
-             numSensors = 306):
-
-    g1Channels = [i for i in range(306) if i%3 == 0] # Gradiometer 1
-    g2Channels = [i for i in range(306) if i%3 == 1] # Gradiometer 2
-    g3Channels = [i for i in range(306) if i%3 == 2] # Magnetometer
+             stop = 375):
+    """
+    Load, downsample and normalize the data from one test subject.
     
-    sys.stdout.write("Loading " + filename + "...")
-    sys.stdout.flush()
+    Args:
+
+        filename:   input mat file name
+        downsample: downsampling factor
+        start:      first time index in the result array (in samples)
+        stop:       last time index in the result array (in samples)
+    
+    Returns: 
+        
+        X:          the 3-dimensional input data array
+        y:          class labels (None if not available)
+        ids:        the sample Id's of the samples, e.g., 17000, 17001, ...
+                    (None if not available)
+        
+    """
+    
+    print "Loading " + filename + "..."
     data = loadmat(filename, squeeze_me=True)
-    XX = data['X']
-
-    # Sensors ordered by their location (from back to front)
-
-    sensorLocations = loadmat("sensorsFromBack.mat")
-    idx = sensorLocations["idx"] - 1
-    idx = idx.ravel()
-    idx = idx[:numSensors]
-    
-    # Remove type 1 gradiometers
-    #idx = [i for i in range(numSensors) if idx[i] not in g1Channels]
-    
-    XX = XX[:, idx, :]    
-    
+    X = data['X']
+   
+    # Class labels available only for training data.
+   
     try:
-        yy = data['y']
+        y = data['y']
     except:
-        yy = None
+        y = None
+
+    # Ids available only for test data
 
     try:
         ids = data['Id']
     except:
         ids = None
 
-    if dsMode == "block":
-        XX = lfilter(np.ones(downSample,), 1, XX)
-        XX = XX[:,:,::downSample]
-    else:
-        XX = scipy.signal.decimate(XX, downSample)
+    # Decimate the time dimension (lowpass filtering + resampling)
 
-    XX_calib = XX[...,:start]
-    XX = XX[..., int(start / float(downSample) + 0.5):int(stop / float(downSample) + 0.5)]
-
-    X_new = copy.deepcopy(XX)
-
-    for trial in range(XX.shape[0]):
-	for t in range(XX.shape[2]):
-	    X_new[trial,:,t] = X_new[trial,:,t] / mad(X_new[trial,:,t])
-            X_new[trial,:,t] = X_new[trial,:,t] - np.median(X_new[trial,:,t])
-
-	X_new[trial,...] = X_new[trial,...] / mad(XX_calib[trial,:,:start])
-	X_new[trial,...] = X_new[trial,...] - np.median(XX_calib[trial,:,:start])
-
-    XX = np.concatenate((XX, X_new), axis = 1)
-    #XX = X_new
-
-    if clipThr is not None:
-        numClipped = 0
-        
-        for n in range(XX.shape[0]):
-            
-            trial = XX[n,...]
-            
-            for channels in [g1Channels, g2Channels, g3Channels]:
-                
-                view = trial[channels, :]        
-                numClipped += np.count_nonzero(np.abs(view) > clipThr*np.std(view))
+    X = decimate(X, downsample)
     
-                # Clip outliers
-                view[view > clipThr*np.std(view)] = clipThr*np.std(view)
-                view[view < -clipThr*np.std(view)] = -clipThr*np.std(view)
-                
-                trial[channels, :] = view
-            
-            XX[n,...] = trial
+    # Extract only the requested time span
+    
+    startIdx = int(start / float(downsample) + 0.5)
+    stopIdx  = int(stop / float(downsample) + 0.5)
+    X = X[..., startIdx:stopIdx]
 
-        sys.stdout.write("Clipped %.2f %%\n" % (100. * numClipped / np.size(XX)))
-        sys.stdout.flush()        
-    else:
-        print
-        
-    XX = XX - np.mean(XX, axis = 0)
-    XX = XX / np.std(XX, axis = 0)
+    # Normalize each measurement
+
+    X = X - np.mean(X, axis = 0)
+    X = X / np.std(X, axis = 0)
     
-    return XX, yy, ids
+    return X, y, ids
     
-def run(C = 0.1, 
+def run(datapath = "data",
+        C = 0.1, 
+        numTrees = 1000,
+        downsample = 8, 
+        start = 130, 
+        stop = 375, 
         relabelThr = 1.0, 
         relabelWeight = 1,
-        width = 1, 
-        downSample = 8, 
-        start = 50, 
-        stop = 375, 
-        clipThr = 3.,
-        numSensors = 306,
-        substitute = False):
+        iterations = 1,
+        substitute = True,
+        estimateCvScore = True):
+    """
+    Run training and prepare a submission file.
+    
+    Args:
+    
+        datapath:        Directory where the training .mat files are located.  
+        C:               Regularization parameter for logistic regression
+        numTrees:        Number of trees in random forest
+        downsample:      Downsampling factor in preprocessing
+        start:           First time index in the result array (in samples)
+        stop:            Last time index in the result array (in samples)
+        relabelThr:      Threshold for accepting predicted test samples in 
+                         second iteration (only used if substitute = False)
+        relabelWeight:   Duplication factor of included test samples 
+                         (only used if substitute = False)
+        substitute:      If True, original training samples are discarded
+                         on second training iteration. Otherwise test
+                         samples are appended to training data.    
+        estimateCvScore: If True, we do a full 16-fold CV for each training 
+                         subject. Otherwise only final submission is created.
+     
+    Returns:
+    
+        Nothing.
+        
+    """
 
     print "DecMeg2014: https://www.kaggle.com/c/decoding-the-human-brain"
-    print
+    print "[2nd place submission. Heikki.Huttunen@tut.fi]"
+    
     subjects_train = range(1, 17) # use range(1, 17) for all subjects
     print "Training on subjects", subjects_train 
-        
-    print "Downsampling with factor %d." % (downSample)
+    
+    X_train = []        # The training data
+    y_train = []        # Training labels
+    X_test = []         # Test data
+    ids_test = []       # Test ids
+    labels = []         # Subject number for each trial in training data
+    labels_test = []    # Subject number for each trial in test data
 
-    X_train = []
-    y_train = []
-    X_test = []
-    ids_test = []
-    labels = []
-
-    print
-    print "Creating the training set."
+    print "Loading %d train subjects." % (len(subjects_train))
     
     for subject in subjects_train:
         
-        filename = 'data/train_subject%02d.mat' % subject
+        filename = datapath + '/train_subject%02d.mat' % subject
 
-        XX, yy, ids = loadData(filename, start = start, stop = stop, numSensors = numSensors)
+        XX, yy, ids = loadData(filename = filename, 
+                               downsample = downsample,
+                               start = start, 
+                               stop = stop)
 
         X_train.append(XX)
         y_train.append(yy)
@@ -179,17 +191,20 @@ def run(C = 0.1,
     X = np.vstack(X_train)    
     y = np.concatenate(y_train)
 
-    print "Trainset:", X.shape
+    print "Training set size:", X.shape
 
     subjects_test = range(17,24)
-    ids_test = []
-    labels_test = []
     
+    print "Loading %d test subjects." % (len(subjects_test))
+        
     for subject in subjects_test:
 
-        filename = 'data/test_subject%02d.mat' % subject
+        filename = datapath + '/test_subject%02d.mat' % subject
 
-        XX, yy, ids = loadData(filename, start = start, stop = stop, numSensors = numSensors)
+        XX, yy, ids = loadData(filename = filename, 
+                               downsample = downsample,
+                               start = start, 
+                               stop = stop)
 
         X_test.append(XX)
         labels_test = labels_test + ([subject] * XX.shape[0])
@@ -198,76 +213,103 @@ def run(C = 0.1,
     X_test = np.vstack(X_test)
     ids_test = np.concatenate(ids_test)
     print "Testset:", X_test.shape
+
+    # Define our two-layer classifier
+
+    clf1 = LogisticRegression(C = C, penalty = 'l2')
+    clf2 = RandomForestClassifier(n_estimators = numTrees, n_jobs = 1)
     
-    scores = []
+    baseClf = LrCollection(clf1 = clf1, 
+                           clf2 = clf2,     # useCols and useRows can be used
+                           useCols = True,  # for predicting with only time 
+                           useRows = True)  # or sensor dimension
 
-    n_jobs = 1
-    print "Start training at %s." % (datetime.datetime.now())
-
-#    baseClf = LrCollection(clf1=LogisticRegression(C = C, penalty = 'l2'), 
-#                        clf2 = LogisticRegression(C = 1, penalty = 'l1'), 
-#                        n_jobs = n_jobs,
-#                        useCols = True, 
-#                        useRows = True)
-                        
-    baseClf = LrCollection(clf1 = LogisticRegression(C = C, penalty = 'l2'), 
-                        clf2 = RandomForestClassifier(n_estimators=1000, n_jobs = n_jobs),
-                        n_jobs = n_jobs,
-                        useCols = True, 
-                        useRows = True)
+    # Wrap the classifier inside our iterative scheme.
+    # The clf argument accepts any sklearn classifier, as well.
                         
     clf = IterativeTrainer(clf = baseClf, 
                            relabelWeight = relabelWeight, 
                            relabelThr = relabelThr,
-                           thrNormalize = False,
                            iters = 1,
                            substitute = substitute)
+
+    if estimateCvScore:
+
+        # Store leave-one-subject-out (LOSO) scores here
     
-    for s, leaveOutSubject in enumerate(subjects_train):
-
-        startTime = time.time()
-        
-        trainIdx = [i for i in range(len(labels)) if labels[i] != leaveOutSubject]
-        testIdx  = [i for i in range(len(labels)) if labels[i] == leaveOutSubject]
-        
-        trainLabels = [l for l in labels if l != leaveOutSubject]
-        testLabels  = [l for l in labels if l == leaveOutSubject]
-        
-        clf.fit(X[trainIdx, :, :], y[trainIdx], X[testIdx,:,:])        
-        yHat = clf.predict(X[testIdx,:,:])
-        
-        score = np.mean(yHat == y[testIdx])
-        scores = scores + [score]
-        
-        msg = "LOSO score for test subject %d is %.4f [%.1f min]. Mean = %.4f +- %.4f." % (leaveOutSubject, score, (time.time() - startTime)/60, np.mean(scores), np.std(scores))
-        print msg
-
-        filename_log = "results/log-last-daymmc4-2-both1.txt"
-        with open(filename_log, "a") as f:
-            f.write(msg + "\n")
-
-    print "Mean score over all subjects is %.4f." % (np.mean(scores))
-
-    ##### PREDICT HERE
+        scores = []    
     
-    filename_submission = "submissions/submission-last-daymmc4-2-both1.txt"
-    print "Creating submission file", filename_submission
+        # Train 16 times with one subject excluded each time.
+    
+        print "Start LOSO training at %s." % (datetime.datetime.now())
+        
+        for leaveOutSubject in subjects_train:
+    
+            startTime = time.time()
+            
+            # Choose training and test indices
+            
+            trainIdx = [i for i in range(len(labels)) if labels[i] != leaveOutSubject]
+            testIdx  = [i for i in range(len(labels)) if labels[i] == leaveOutSubject]
+            
+            # Train the model. Note that the test data are also passed
+            # to training due to iterative transduction.
+            
+            clf.fit(X[trainIdx, :, :], y[trainIdx], X[testIdx,:,:])        
+
+            # Predict classes for left-out subject
+
+            yHat = clf.predict(X[testIdx,:,:])
+
+            # Estimate accuracy.
+
+            score = np.mean(yHat == y[testIdx])
+            scores = scores + [score]
+            
+            print "LOSO score for test subject %d is %.4f [%.1f min]. \
+                   Mean = %.4f +- %.4f." % \
+                   (leaveOutSubject, 
+                    score, 
+                    (time.time() - startTime)/60, 
+                    np.mean(scores), 
+                    np.std(scores))
+    
+        print "Mean score over all subjects is %.4f." % (np.mean(scores))
+
+    # Prediction for test samples.
+
+    print "Start training final models at %s." % (datetime.datetime.now())
+    
+    filename_submission = "submission.csv"
+    print "Submission file: ", filename_submission
+    
+    # Write header for the csv file
     
     with open(filename_submission, "w") as f:
         f.write("Id,Prediction\n")
         
+    # Train a subjective model for each test subject.
+        
     for subject in subjects_test:
         
-        idx = [i for i in range(len(ids_test)) if ids_test[i]/1000 == subject]
+        # Find trials for this test subject:
+        
+        idx = [i for i in range(len(ids_test)) if ids_test[i] / 1000 == subject]
         
         X_subj = X_test[idx,...]
         id_subj = ids_test[idx]
+        
+        # Fit a model for predicting labels for one subject.
+        # Note that the test data are also passed to training due 
+        # to iterative transduction.
             
         print "Fitting full model for test subject %d." % (subject)
         clf.fit(X, y, X_subj)
         
         print "Predicting."               
         y_subj = clf.predict(X_subj)
+
+        # Append predicted labels to file.
 
         with open(filename_submission, "a") as f:
             for i in range(y_subj.shape[0]):
@@ -276,25 +318,31 @@ def run(C = 0.1,
     print "Done."
 
 if __name__ == "__main__":
+    """
+    Set training parameters and call main function.
+    """
     
+    datapath = "data"
     C = 10. ** -2.25
-    relabelWeight = 10
+    numTrees = 100
+    relabelWeight = 1
     relabelThr = 0.1
-    width = 1
-
     downsample = 8
     start = 130
     stop = 375
-
-    numSensors = 306
-    clipThr = None
-
-    relabelThr = 0.1
-
-    start = 130
-    numSensors = 153
     substitute = True
+    estimateCvScore = True
+    iterations = 2
         
-    print "Training subst = %d, numSensors = %d, relabelWeight = %.1f downsample = %d, start = %d and relabelThr = %.1f." % (int(substitute), numSensors, relabelWeight, downsample, start, relabelThr)
-    run(C, relabelThr, relabelWeight, width, downsample, start = start, stop = stop, clipThr = clipThr, numSensors = numSensors, substitute = substitute)
+    run(datapath = datapath,
+        C = C, 
+        numTrees = numTrees,
+        relabelThr = relabelThr, 
+        relabelWeight = relabelWeight, 
+        iterations = iterations,
+        downsample = downsample, 
+        start = start, 
+        stop = stop, 
+        substitute = substitute,
+        estimateCvScore = estimateCvScore)
 
