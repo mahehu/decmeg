@@ -4,7 +4,7 @@ decmeg
 
 2nd place submission to the MEG decoding competition
 
-        (https://www.kaggle.com/c/decoding-the-human-brain)
+   https://www.kaggle.com/c/decoding-the-human-brain
 
    Heikki.Huttunen@tut.fi, Jul 29th, 2014
 
