@@ -4,7 +4,7 @@ decmeg
 
 2nd place submission to the MEG decoding competition https://www.kaggle.com/c/decoding-the-human-brain
 
-        https://www.kaggle.com/c/decoding-the-human-brain
+        [https://www.kaggle.com/c/decoding-the-human-brain]
 
    Heikki.Huttunen@tut.fi, Jul 29th, 2014
 
@@ -21,10 +21,16 @@ decmeg
    only. This iteration is wrapped in the class IterativeTrainer.
    
    Requires sklearn, scipy and numpy packages.
+
+   Example usage:
+
+```
+python train.py
+```
    
-===
 #License
 
+```
 Copyright (c) 2014, Heikki Huttunen 
 Department of Signal Processing
 Tampere University of Technology
@@ -53,4 +59,4 @@ LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
 ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-"""
+```
