@@ -1,9 +1,8 @@
 decmeg
 ======
+#Description
 
 2nd place submission to the MEG decoding competition https://www.kaggle.com/c/decoding-the-human-brain
-
-   DecMeg2014 2nd place submission code
 
         https://www.kaggle.com/c/decoding-the-human-brain
 
@@ -24,6 +23,8 @@ decmeg
    Requires sklearn, scipy and numpy packages.
    
 ===
+#License
+
 Copyright (c) 2014, Heikki Huttunen 
 Department of Signal Processing
 Tampere University of Technology
