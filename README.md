@@ -28,6 +28,7 @@ decmeg
 
 ```
 python train.py
+python predict.py
 ```
    
 #License
