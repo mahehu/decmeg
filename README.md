@@ -22,6 +22,8 @@ decmeg
    
    Requires sklearn, scipy and numpy packages.
 
+   Platform: Scientific Linux release 6.5.
+
    Example usage:
 
 ```

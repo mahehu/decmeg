@@ -59,7 +59,7 @@ from sklearn.ensemble import RandomForestClassifier
 import time
 import sys
 import copy 
-import datetime 
+import datetime
 import os.path
 import json
 import cPickle as pickle
@@ -125,9 +125,9 @@ def loadData(filename,
     
     return X, y, ids
     
-def run(datapath = "data",
-	modelpath = "models",
-	testdatapath = "data",
+def run(modelpath = "models",
+        testdatapath = "data",
+        submissionpath = "submissions",
         C = 0.1, 
         numTrees = 1000,
         downsample = 8, 
@@ -136,8 +136,7 @@ def run(datapath = "data",
         relabelThr = 1.0, 
         relabelWeight = 1,
         iterations = 1,
-        substitute = True,
-        estimateCvScore = True):
+        substitute = True):
     """
     Run training and prepare a submission file.
     
@@ -167,36 +166,10 @@ def run(datapath = "data",
 
     print "DecMeg2014: https://www.kaggle.com/c/decoding-the-human-brain"
     print "[2nd place submission. Heikki.Huttunen@tut.fi]"
-    
-    subjects_train = range(1, 17) # use range(1, 17) for all subjects
-    print "Training on subjects", subjects_train 
-    
-    X_train = []        # The training data
-    y_train = []        # Training labels
+
     X_test = []         # Test data
     ids_test = []       # Test ids
-    labels = []         # Subject number for each trial in training data
     labels_test = []    # Subject number for each trial in test data
-
-    print "Loading %d train subjects." % (len(subjects_train))
-    
-    for subject in subjects_train:
-        
-        filename = os.path.join(datapath, 'train_subject%02d.mat' % subject)
-
-        XX, yy, ids = loadData(filename = filename, 
-                               downsample = downsample,
-                               start = start, 
-                               stop = stop)
-
-        X_train.append(XX)
-        y_train.append(yy)
-        labels = labels + ([subject] * yy.shape[0])
-
-    X = np.vstack(X_train)    
-    y = np.concatenate(y_train)
-
-    print "Training set size:", X.shape
 
     subjects_test = range(17,24)
     
@@ -218,80 +191,24 @@ def run(datapath = "data",
     X_test = np.vstack(X_test)
     ids_test = np.concatenate(ids_test)
     print "Testset:", X_test.shape
-
-    # Define our two-layer classifier
-
-    clf1 = LogisticRegression(C = C, penalty = 'l2')
-    clf2 = RandomForestClassifier(n_estimators = numTrees, n_jobs = 1)
     
-    baseClf = LrCollection(clf1 = clf1, 
-                           clf2 = clf2,     # useCols and useRows can be used
-                           useCols = True,  # for predicting with only time 
-                           useRows = True)  # or sensor dimension
-
-    # Wrap the classifier inside our iterative scheme.
-    # The clf argument accepts any sklearn classifier, as well.
-                        
-    clf = IterativeTrainer(clf = baseClf, 
-                           relabelWeight = relabelWeight, 
-                           relabelThr = relabelThr,
-                           iters = 1,
-                           substitute = substitute)
-
-    if estimateCvScore:
-
-        # Store leave-one-subject-out (LOSO) scores here
+    filename_submission = os.path.join(submissionpath, "submission.csv")
+    print "Submission file: ", filename_submission
     
-        scores = []    
+    # Write header for the csv file
     
-        # Train 16 times with one subject excluded each time.
-    
-        print "Start LOSO training at %s." % (datetime.datetime.now())
+    with open(filename_submission, "w") as f:
+        f.write("Id,Prediction\n")
         
-        for leaveOutSubject in subjects_train:
-    
-            startTime = time.time()
-            
-            # Choose training and test indices
-            
-            trainIdx = [i for i in range(len(labels)) if labels[i] != leaveOutSubject]
-            testIdx  = [i for i in range(len(labels)) if labels[i] == leaveOutSubject]
-            
-            # Train the model. Note that the test data are also passed
-            # to training due to iterative transduction.
-            
-            clf.fit(X[trainIdx, :, :], y[trainIdx], X[testIdx,:,:])        
-
-            # Predict classes for left-out subject
-
-            yHat = clf.predict(X[testIdx,:,:])
-
-            # Estimate accuracy.
-
-            score = np.mean(yHat == y[testIdx])
-            scores = scores + [score]
-            
-            print "LOSO score for test subject %d is %.4f [%.1f min]. \
-                   Mean = %.4f +- %.4f." % \
-                   (leaveOutSubject, 
-                    score, 
-                    (time.time() - startTime)/60, 
-                    np.mean(scores), 
-                    np.std(scores))
-    
-        print "Mean score over all subjects is %.4f." % (np.mean(scores))
-
-    # Train the model.
-
-    print "Start training final models at %s." % (datetime.datetime.now())
-    
-    # Train a subjective model for each test subject, and serialize them.
+    # Train a subjective model for each test subject.
         
     for subject in subjects_test:
-        
-        filename = "model%d.pkl" % subject
-        output = open(os.path.join(modelpath, filename), "wb")
 
+        filename = "model%d.pkl" % subject
+        pkl_file = open(os.path.join(modelpath, filename), "rb")
+        clf = pickle.load(pkl_file)
+        pkl_file.close()
+        
         # Find trials for this test subject:
         
         idx = [i for i in range(len(ids_test)) if ids_test[i] / 1000 == subject]
@@ -299,31 +216,29 @@ def run(datapath = "data",
         X_subj = X_test[idx,...]
         id_subj = ids_test[idx]
         
-        # Fit a model for predicting labels for one subject.
-        # Note that the test data are also passed to training due 
-        # to iterative transduction.
-            
-        print "Fitting full model for test subject %d." % (subject)
-        clf.fit(X, y, X_subj)
-        
-        print "Writing %s..." % os.path.join(modelpath, filename)
-        pickle.dump(clf, output)
+        print "Predicting."
+        y_subj = clf.predict(X_subj)
 
-        output.close()
-        
+        # Append predicted labels to file.
+
+        with open(filename_submission, "a") as f:
+            for i in range(y_subj.shape[0]):
+                f.write("%d,%d\n" % (id_subj[i], y_subj[i]))
+
     print "Done."
 
 if __name__ == "__main__":
     """
     Set training parameters and call main function.
     """
-    
+
     f = open("SETTINGS.json", "r")
     settings = json.load(f)
-    datapath = settings["TRAIN_DATA_PATH"]
     modelpath = settings["MODEL_PATH"]
     testdatapath = settings["TEST_DATA_PATH"]
+    submissionpath = settings["SUBMISSION_PATH"]
     f.close()
+    datapath = "data"
     C = 10. ** -2.25
     numTrees = 100
     relabelWeight = 1
@@ -332,12 +247,11 @@ if __name__ == "__main__":
     start = 130
     stop = 375
     substitute = True
-    estimateCvScore = False
     iterations = 2
         
-    run(datapath = datapath,
-        modelpath = modelpath,
+    run(modelpath = modelpath,
         testdatapath = testdatapath,
+        submissionpath = submissionpath,
         C = C, 
         numTrees = numTrees,
         relabelThr = relabelThr, 
@@ -346,6 +260,5 @@ if __name__ == "__main__":
         downsample = downsample, 
         start = start, 
         stop = stop, 
-        substitute = substitute,
-        estimateCvScore = estimateCvScore)
+        substitute = substitute)
 

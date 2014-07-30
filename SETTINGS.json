@@ -1,0 +1,6 @@
+{
+    "TRAIN_DATA_PATH": "data",
+    "MODEL_PATH": "models",
+    "TEST_DATA_PATH": "data",
+    "SUBMISSION_PATH": "submissions"
+}

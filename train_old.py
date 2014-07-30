@@ -60,9 +60,6 @@ import time
 import sys
 import copy 
 import datetime 
-import os.path
-import json
-import cPickle as pickle
 
 from LrCollection import LrCollection
 from IterativeTrainer import IterativeTrainer
@@ -126,8 +123,6 @@ def loadData(filename,
     return X, y, ids
     
 def run(datapath = "data",
-	modelpath = "models",
-	testdatapath = "data",
         C = 0.1, 
         numTrees = 1000,
         downsample = 8, 
@@ -182,7 +177,7 @@ def run(datapath = "data",
     
     for subject in subjects_train:
         
-        filename = os.path.join(datapath, 'train_subject%02d.mat' % subject)
+        filename = datapath + '/train_subject%02d.mat' % subject
 
         XX, yy, ids = loadData(filename = filename, 
                                downsample = downsample,
@@ -204,7 +199,7 @@ def run(datapath = "data",
         
     for subject in subjects_test:
 
-        filename = os.path.join(testdatapath, 'test_subject%02d.mat' % subject)
+        filename = datapath + '/test_subject%02d.mat' % subject
 
         XX, yy, ids = loadData(filename = filename, 
                                downsample = downsample,
@@ -281,17 +276,22 @@ def run(datapath = "data",
     
         print "Mean score over all subjects is %.4f." % (np.mean(scores))
 
-    # Train the model.
+    # Prediction for test samples.
 
     print "Start training final models at %s." % (datetime.datetime.now())
     
-    # Train a subjective model for each test subject, and serialize them.
+    filename_submission = "submission.csv"
+    print "Submission file: ", filename_submission
+    
+    # Write header for the csv file
+    
+    with open(filename_submission, "w") as f:
+        f.write("Id,Prediction\n")
+        
+    # Train a subjective model for each test subject.
         
     for subject in subjects_test:
         
-        filename = "model%d.pkl" % subject
-        output = open(os.path.join(modelpath, filename), "wb")
-
         # Find trials for this test subject:
         
         idx = [i for i in range(len(ids_test)) if ids_test[i] / 1000 == subject]
@@ -306,11 +306,15 @@ def run(datapath = "data",
         print "Fitting full model for test subject %d." % (subject)
         clf.fit(X, y, X_subj)
         
-        print "Writing %s..." % os.path.join(modelpath, filename)
-        pickle.dump(clf, output)
+        print "Predicting."               
+        y_subj = clf.predict(X_subj)
 
-        output.close()
-        
+        # Append predicted labels to file.
+
+        with open(filename_submission, "a") as f:
+            for i in range(y_subj.shape[0]):
+                f.write("%d,%d\n" % (id_subj[i], y_subj[i]))
+
     print "Done."
 
 if __name__ == "__main__":
@@ -318,12 +322,7 @@ if __name__ == "__main__":
     Set training parameters and call main function.
     """
     
-    f = open("SETTINGS.json", "r")
-    settings = json.load(f)
-    datapath = settings["TRAIN_DATA_PATH"]
-    modelpath = settings["MODEL_PATH"]
-    testdatapath = settings["TEST_DATA_PATH"]
-    f.close()
+    datapath = "data"
     C = 10. ** -2.25
     numTrees = 100
     relabelWeight = 1
@@ -332,12 +331,10 @@ if __name__ == "__main__":
     start = 130
     stop = 375
     substitute = True
-    estimateCvScore = False
+    estimateCvScore = True
     iterations = 2
         
     run(datapath = datapath,
-        modelpath = modelpath,
-        testdatapath = testdatapath,
         C = C, 
         numTrees = numTrees,
         relabelThr = relabelThr, 
