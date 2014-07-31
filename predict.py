@@ -66,97 +66,25 @@ import cPickle as pickle
 
 from LrCollection import LrCollection
 from IterativeTrainer import IterativeTrainer
-
-def loadData(filename,
-             downsample = 8, 
-             start = 130, 
-             stop = 375):
-    """
-    Load, downsample and normalize the data from one test subject.
-    
-    Args:
-
-        filename:   input mat file name
-        downsample: downsampling factor
-        start:      first time index in the result array (in samples)
-        stop:       last time index in the result array (in samples)
-    
-    Returns: 
-        
-        X:          the 3-dimensional input data array
-        y:          class labels (None if not available)
-        ids:        the sample Id's of the samples, e.g., 17000, 17001, ...
-                    (None if not available)
-        
-    """
-    
-    print "Loading " + filename + "..."
-    data = loadmat(filename, squeeze_me=True)
-    X = data['X']
-   
-    # Class labels available only for training data.
-   
-    try:
-        y = data['y']
-    except:
-        y = None
-
-    # Ids available only for test data
-
-    try:
-        ids = data['Id']
-    except:
-        ids = None
-
-    # Decimate the time dimension (lowpass filtering + resampling)
-
-    X = decimate(X, downsample)
-    
-    # Extract only the requested time span
-    
-    startIdx = int(start / float(downsample) + 0.5)
-    stopIdx  = int(stop / float(downsample) + 0.5)
-    X = X[..., startIdx:stopIdx]
-
-    # Normalize each measurement
-
-    X = X - np.mean(X, axis = 0)
-    X = X / np.std(X, axis = 0)
-    
-    return X, y, ids
+from train import loadData
     
 def run(modelpath = "models",
         testdatapath = "data",
         submissionpath = "submissions",
-        C = 0.1, 
-        numTrees = 1000,
         downsample = 8, 
         start = 130, 
-        stop = 375, 
-        relabelThr = 1.0, 
-        relabelWeight = 1,
-        iterations = 1,
-        substitute = True):
+        stop = 375):
     """
     Run training and prepare a submission file.
     
     Args:
-    
-        datapath:        Directory where the training .mat files are located.  
-        C:               Regularization parameter for logistic regression
-        numTrees:        Number of trees in random forest
+        
+        modelpath: subfolder where trained models are located
+        testdatapath: subfolder where testing .mat files are located
+        submissionpath: subfolder where submissions are stored
         downsample:      Downsampling factor in preprocessing
         start:           First time index in the result array (in samples)
         stop:            Last time index in the result array (in samples)
-        relabelThr:      Threshold for accepting predicted test samples in 
-                         second iteration (only used if substitute = False)
-        relabelWeight:   Duplication factor of included test samples 
-                         (only used if substitute = False)
-        substitute:      If True, original training samples are discarded
-                         on second training iteration. Otherwise test
-                         samples are appended to training data.    
-        estimateCvScore: If True, we do a full 16-fold CV for each training 
-                         subject. Otherwise only final submission is created.
      
     Returns:
     
@@ -238,27 +166,14 @@ if __name__ == "__main__":
     testdatapath = settings["TEST_DATA_PATH"]
     submissionpath = settings["SUBMISSION_PATH"]
     f.close()
-    datapath = "data"
-    C = 10. ** -2.25
-    numTrees = 100
-    relabelWeight = 1
-    relabelThr = 0.1
     downsample = 8
     start = 130
     stop = 375
-    substitute = True
-    iterations = 2
         
     run(modelpath = modelpath,
         testdatapath = testdatapath,
         submissionpath = submissionpath,
-        C = C, 
-        numTrees = numTrees,
-        relabelThr = relabelThr, 
-        relabelWeight = relabelWeight, 
-        iterations = iterations,
         downsample = downsample, 
         start = start, 
-        stop = stop, 
-        substitute = substitute)
+        stop = stop)
 

@@ -143,7 +143,9 @@ def run(datapath = "data",
     
     Args:
     
-        datapath:        Directory where the training .mat files are located.  
+        datapath:        subfolder where the training .mat files are located. 
+        modelpath: subfolder where trained models are stored
+        testdatapath: subfolder where testing .mat files are located
         C:               Regularization parameter for logistic regression
         numTrees:        Number of trees in random forest
         downsample:      Downsampling factor in preprocessing
