@@ -75,7 +75,7 @@ def run(modelpath = "models",
         start = 130, 
         stop = 375):
     """
-    Run training and prepare a submission file.
+    Load the trained models and prepare a submission file.
     
     Args:
         
@@ -128,7 +128,7 @@ def run(modelpath = "models",
     with open(filename_submission, "w") as f:
         f.write("Id,Prediction\n")
         
-    # Train a subjective model for each test subject.
+    # Load a trained model for each test subject.
         
     for subject in subjects_test:
 

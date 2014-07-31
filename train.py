@@ -139,7 +139,7 @@ def run(datapath = "data",
         substitute = True,
         estimateCvScore = True):
     """
-    Run training and prepare a submission file.
+    Run training and serialize trained models.
     
     Args:
     
