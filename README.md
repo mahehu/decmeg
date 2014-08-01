@@ -22,7 +22,7 @@ decmeg
    
    Requires sklearn, scipy and numpy packages.
 
-   Platform: Tested on Scientific Linux release 6.5 and Ubuntu 14.04LTS.
+   Platform: Tested on Scientific Linux release 6.5 and Ubuntu 14.04 LTS.
 
    Example usage:
 
