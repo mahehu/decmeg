@@ -359,7 +359,7 @@ if __name__ == "__main__":
 
     try:
         randomseed = int(sys.argv[1])
-    catch:
+    except:
     	randomseed = 3
     	
     np.random.seed(randomseed)
