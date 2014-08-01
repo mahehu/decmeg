@@ -119,7 +119,12 @@ def run(modelpath = "models",
     X_test = np.vstack(X_test)
     ids_test = np.concatenate(ids_test)
     print "Testset:", X_test.shape
-    
+
+    # Make sure the submissions directory exists:
+
+    if not os.path.exists(submissionpath):
+        os.makedirs(submissionpath)
+
     filename_submission = os.path.join(submissionpath, "submission.csv")
     print "Submission file: ", filename_submission
     
@@ -144,7 +149,7 @@ def run(modelpath = "models",
         X_subj = X_test[idx,...]
         id_subj = ids_test[idx]
         
-        print "Predicting."
+        print "Predicting subject %d..." % (subject)
         y_subj = clf.predict(X_subj)
 
         # Append predicted labels to file.

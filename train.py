@@ -70,7 +70,8 @@ from IterativeTrainer import IterativeTrainer
 def loadData(filename,
              downsample = 8, 
              start = 130, 
-             stop = 375):
+             stop = 375,
+	     numSensors = 306):
     """
     Load, downsample and normalize the data from one test subject.
     
@@ -80,6 +81,7 @@ def loadData(filename,
         downsample: downsampling factor
         start:      first time index in the result array (in samples)
         stop:       last time index in the result array (in samples)
+	numSensors: number of sensors to use
     
     Returns: 
         
@@ -94,6 +96,16 @@ def loadData(filename,
     data = loadmat(filename, squeeze_me=True)
     X = data['X']
    
+    # Sort sensors ordered by their location (from back to front)
+    # The mat file is generated from file NeuroMagSensorsDeviceSpace.mat
+    # provided by the organizers.
+
+    sensorLocations = loadmat("sensorsFromBack.mat")
+    idx = sensorLocations["idx"] - 1
+    idx = idx.ravel()
+    idx = idx[:numSensors]
+    X = X[:, idx, :]
+
     # Class labels available only for training data.
    
     try:
@@ -133,6 +145,7 @@ def run(datapath = "data",
         downsample = 8, 
         start = 130, 
         stop = 375, 
+        numSensors = 306,
         relabelThr = 1.0, 
         relabelWeight = 1,
         iterations = 1,
@@ -151,6 +164,7 @@ def run(datapath = "data",
         downsample:      Downsampling factor in preprocessing
         start:           First time index in the result array (in samples)
         stop:            Last time index in the result array (in samples)
+        numSensors:      Number of sensors to use (starting from back of the head)
         relabelThr:      Threshold for accepting predicted test samples in 
                          second iteration (only used if substitute = False)
         relabelWeight:   Duplication factor of included test samples 
@@ -287,8 +301,13 @@ def run(datapath = "data",
 
     print "Start training final models at %s." % (datetime.datetime.now())
     
+    # Make sure there is a directory for storing the models:
+
+    if not os.path.exists(modelpath):
+        os.makedirs(modelpath)
+
     # Train a subjective model for each test subject, and serialize them.
-        
+    
     for subject in subjects_test:
         
         filename = "model%d.pkl" % subject
@@ -327,15 +346,19 @@ if __name__ == "__main__":
     testdatapath = settings["TEST_DATA_PATH"]
     f.close()
     C = 10. ** -2.25
-    numTrees = 100
-    relabelWeight = 1
+    numTrees = 1000
+    relabelWeight = 10
     relabelThr = 0.1
     downsample = 8
     start = 130
     stop = 375
     substitute = True
     estimateCvScore = False
-    iterations = 2
+    iterations = 1
+    numSensors = 306
+
+    randomseed = int(sys.argv[1])
+    np.random.seed(randomseed)
         
     run(datapath = datapath,
         modelpath = modelpath,
@@ -348,6 +371,9 @@ if __name__ == "__main__":
         downsample = downsample, 
         start = start, 
         stop = stop, 
+        numSensors = numSensors,
         substitute = substitute,
-        estimateCvScore = estimateCvScore)
+        estimateCvScore = estimateCvScore,
+	randomseed = randomseed)
+
 
