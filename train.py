@@ -357,7 +357,11 @@ if __name__ == "__main__":
     iterations = 1
     numSensors = 306
 
-    randomseed = int(sys.argv[1])
+    try:
+        randomseed = int(sys.argv[1])
+    catch:
+    	randomseed = 3
+    	
     np.random.seed(randomseed)
         
     run(datapath = datapath,
