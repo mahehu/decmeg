@@ -151,6 +151,7 @@ def run(datapath = "data",
         iterations = 1,
         substitute = True,
         estimateCvScore = True):
+        	
     """
     Run training and serialize trained models.
     
@@ -357,11 +358,7 @@ if __name__ == "__main__":
     iterations = 1
     numSensors = 306
 
-    try:
-        randomseed = int(sys.argv[1])
-    except:
-    	randomseed = 3
-    	
+    randomseed = 0
     np.random.seed(randomseed)
         
     run(datapath = datapath,
@@ -377,7 +374,6 @@ if __name__ == "__main__":
         stop = stop, 
         numSensors = numSensors,
         substitute = substitute,
-        estimateCvScore = estimateCvScore,
-	randomseed = randomseed)
+        estimateCvScore = estimateCvScore)
 
 
