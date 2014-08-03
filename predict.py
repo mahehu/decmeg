@@ -79,9 +79,9 @@ def run(modelpath = "models",
     
     Args:
         
-        modelpath: subfolder where trained models are located
-        testdatapath: subfolder where testing .mat files are located
-        submissionpath: subfolder where submissions are stored
+        modelpath:       subfolder where trained models are located
+        testdatapath:    subfolder where testing .mat files are located
+        submissionpath:  subfolder where submissions are stored
         downsample:      Downsampling factor in preprocessing
         start:           First time index in the result array (in samples)
         stop:            Last time index in the result array (in samples)
